@@ -4,7 +4,7 @@ import payload from '../../src';
 import { mapAsync } from '../../src/utilities/mapAsync';
 import { AdminUrlUtil } from '../helpers/adminUrlUtil';
 import { initPayloadE2E } from '../helpers/configHelpers';
-import { login, saveDocAndAssert } from '../helpers';
+import { saveDocAndAssert } from '../helpers';
 import type {
   FieldsRelationship as CollectionWithRelationships,
   RelationOne,
@@ -37,8 +37,6 @@ describe('fields - relationship', () => {
 
     const context = await browser.newContext();
     page = await context.newPage();
-
-    await login({ page, serverURL });
   });
 
   beforeEach(async () => {
@@ -125,6 +123,34 @@ describe('fields - relationship', () => {
     await expect(field).toContainText(relationOneDoc.id);
 
     await saveDocAndAssert(page);
+    await wait(200);
+    await expect(field).toContainText(relationOneDoc.id);
+  });
+
+  test('should create relations to multiple collections', async () => {
+    await page.goto(url.create);
+
+    const field = page.locator('#field-relationshipMultiple');
+    const value = page.locator('#field-relationshipMultiple .relationship--single-value__text');
+
+    await field.click({ delay: 100 });
+
+    const options = page.locator('.rs__option');
+
+    await expect(options).toHaveCount(3); // 3 docs
+
+    // Add one relationship
+    await options.locator(`text=${relationOneDoc.id}`).click();
+    await expect(value).toContainText(relationOneDoc.id);
+
+    // Add relationship of different collection
+    await field.click({ delay: 100 });
+    await options.locator(`text=${relationTwoDoc.id}`).click();
+    await expect(value).toContainText(relationTwoDoc.id);
+
+    await saveDocAndAssert(page);
+    await wait(200);
+    await expect(value).toContainText(relationTwoDoc.id);
   });
 
   test('should create hasMany relationship', async () => {
@@ -154,30 +180,33 @@ describe('fields - relationship', () => {
     await expect(page.locator('.rs__menu')).toHaveText('No options');
 
     await saveDocAndAssert(page);
+    await wait(200);
+    await expect(values).toHaveText([relationOneDoc.id, anotherRelationOneDoc.id]);
   });
 
-  test('should create relations to multiple collections', async () => {
+  test('should create many relations to multiple collections', async () => {
     await page.goto(url.create);
 
-    const field = page.locator('#field-relationshipMultiple');
-    const value = page.locator('#field-relationshipMultiple .relationship--single-value__text');
-
+    const field = page.locator('#field-relationshipHasManyMultiple');
     await field.click({ delay: 100 });
 
     const options = page.locator('.rs__option');
+    await expect(options).toHaveCount(3);
 
-    await expect(options).toHaveCount(3); // 3 docs
+    const values = page.locator('#field-relationshipHasManyMultiple .relationship--multi-value-label__text');
 
     // Add one relationship
     await options.locator(`text=${relationOneDoc.id}`).click();
-    await expect(value).toContainText(relationOneDoc.id);
+    await expect(values).toHaveText([relationOneDoc.id]);
 
-    // Add relationship of different collection
+    // Add second relationship
     await field.click({ delay: 100 });
     await options.locator(`text=${relationTwoDoc.id}`).click();
-    await expect(value).toContainText(relationTwoDoc.id);
+    await expect(values).toHaveText([relationOneDoc.id, relationTwoDoc.id]);
 
     await saveDocAndAssert(page);
+    await wait(200);
+    await expect(values).toHaveText([relationOneDoc.id, relationTwoDoc.id]);
   });
 
   test('should duplicate document with relationships', async () => {
@@ -190,7 +219,7 @@ describe('fields - relationship', () => {
     await expect(field).toHaveText(relationOneDoc.id);
   });
 
-  test('should allow dynamic filterOptions', async () => {
+  async function runFilterOptionsTest(fieldName: string) {
     await page.goto(url.edit(docWithExistingRelations.id));
 
     // fill the first relation field
@@ -201,7 +230,7 @@ describe('fields - relationship', () => {
     await expect(field).toContainText(relationOneDoc.id);
 
     // then verify that the filtered field's options match
-    let filteredField = page.locator('#field-relationshipFiltered .react-select');
+    let filteredField = page.locator(`#field-${fieldName} .react-select`);
     await filteredField.click({ delay: 100 });
     const filteredOptions = filteredField.locator('.rs__option');
     await expect(filteredOptions).toHaveCount(1); // one doc
@@ -213,12 +242,27 @@ describe('fields - relationship', () => {
     await options.nth(1).click();
     await expect(field).toContainText(anotherRelationOneDoc.id);
 
+    // Now, save the document. This should fail, as the filitered field doesn't match the selected relationship value
+    await page.locator('#action-save').click();
+    await expect(page.locator('.Toastify')).toContainText(`is invalid: ${fieldName}`);
+
     // then verify that the filtered field's options match
-    filteredField = page.locator('#field-relationshipFiltered .react-select');
+    filteredField = page.locator(`#field-${fieldName} .react-select`);
     await filteredField.click({ delay: 100 });
     await expect(filteredOptions).toHaveCount(2); // two options because the currently selected option is still there
     await filteredOptions.nth(1).click();
     await expect(filteredField).toContainText(anotherRelationOneDoc.id);
+
+    // Now, saving the document should succeed
+    await saveDocAndAssert(page);
+  }
+
+  test('should allow dynamic filterOptions', async () => {
+    await runFilterOptionsTest('relationshipFiltered');
+  });
+
+  test('should allow dynamic async filterOptions', async () => {
+    await runFilterOptionsTest('relationshipFilteredAsync');
   });
 
   test('should allow usage of relationTo in filterOptions', async () => {
@@ -275,6 +319,33 @@ describe('fields - relationship', () => {
 
     const documentDrawer = await page.locator('[id^=doc-drawer_relation-one_1_]');
     await expect(documentDrawer).toBeVisible();
+  });
+
+  test('should open document drawer and append newly created docs onto the parent field', async () => {
+    await page.goto(url.edit(docWithExistingRelations.id));
+
+    const field = page.locator('#field-relationshipHasMany');
+
+    // open the document drawer
+    const addNewButton = await field.locator('button.relationship-add-new__add-button.doc-drawer__toggler');
+    await addNewButton.click();
+    const documentDrawer = await page.locator('[id^=doc-drawer_relation-one_1_]');
+    await expect(documentDrawer).toBeVisible();
+
+    // fill in the field and save the document, keep the drawer open for further testing
+    const drawerField = await documentDrawer.locator('#field-name');
+    await drawerField.fill('Newly created document');
+    const saveButton = await documentDrawer.locator('#action-save');
+    await saveButton.click();
+    await expect(page.locator('.Toastify')).toContainText('successfully');
+
+    // count the number of values in the field to ensure only one was added
+    await expect(await page.locator('#field-relationshipHasMany .value-container .rs__multi-value')).toHaveCount(1);
+
+    // save the same document again to ensure the relationship field doesn't receive duplicative values
+    await saveButton.click();
+    await expect(page.locator('.Toastify')).toContainText('successfully');
+    await expect(await page.locator('#field-relationshipHasMany .value-container .rs__multi-value')).toHaveCount(1);
   });
 
   describe('existing relationships', () => {
@@ -363,25 +434,21 @@ describe('fields - relationship', () => {
     });
   });
 
-  describe('externally update field', () => {
+  describe('externally update relationship field', () => {
     beforeAll(async () => {
-      url = new AdminUrlUtil(serverURL, relationUpdatedExternallySlug);
-      await page.goto(url.create);
+      const externalRelationURL = new AdminUrlUtil(serverURL, relationUpdatedExternallySlug);
+      await page.goto(externalRelationURL.create);
     });
 
     test('has many, one collection', async () => {
-      await page.goto(url.create);
-
       await page.locator('#field-relationHasMany + .pre-populate-field-ui button').click();
       await wait(300);
-
       await expect(page.locator('#field-relationHasMany .rs__value-container > .rs__multi-value')).toHaveCount(15);
     });
 
     test('has many, many collections', async () => {
       await page.locator('#field-relationToManyHasMany + .pre-populate-field-ui button').click();
       await wait(300);
-
       await expect(page.locator('#field-relationToManyHasMany .rs__value-container > .rs__multi-value')).toHaveCount(15);
     });
   });

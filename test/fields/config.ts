@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 import path from 'path';
 import fs from 'fs';
-import { buildConfig } from '../buildConfig';
+import { buildConfigWithDefaults } from '../buildConfigWithDefaults';
 import { devUser } from '../credentials';
 import ArrayFields, { arrayDoc } from './collections/Array';
 import BlockFields, { blocksDoc } from './collections/Blocks';
@@ -26,7 +26,7 @@ import Uploads2 from './collections/Upload2';
 import Uploads3 from './collections/Uploads3';
 import RowFields from './collections/Row';
 
-export default buildConfig({
+export default buildConfigWithDefaults({
   admin: {
     webpack: (config) => ({
       ...config,
@@ -51,7 +51,6 @@ export default buildConfig({
           name: 'canViewConditionalField',
           type: 'checkbox',
           defaultValue: true,
-          saveToJWT: true,
         },
       ],
     },
@@ -138,6 +137,8 @@ export default buildConfig({
     await payload.create({ collection: 'rich-text-fields', data: richTextBulletsDoc });
     await payload.create({ collection: 'rich-text-fields', data: richTextDocWithRelationship });
 
+    await payload.create({ collection: 'number-fields', data: { number: 2 } });
+    await payload.create({ collection: 'number-fields', data: { number: 3 } });
     await payload.create({ collection: 'number-fields', data: numberDoc });
 
     const blocksDocWithRichText = { ...blocksDoc };

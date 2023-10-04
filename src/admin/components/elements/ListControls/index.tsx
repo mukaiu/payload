@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import AnimateHeight from 'react-animate-height';
 import { useTranslation } from 'react-i18next';
 import { useWindowInfo } from '@faceless-ui/window-info';
@@ -20,11 +20,29 @@ import EditMany from '../EditMany';
 import DeleteMany from '../DeleteMany';
 import PublishMany from '../PublishMany';
 import UnpublishMany from '../UnpublishMany';
+import { SanitizedCollectionConfig } from '../../../../collections/config/types';
 
 import './index.scss';
 
 const baseClass = 'list-controls';
 
+const getUseAsTitle = (collection: SanitizedCollectionConfig) => {
+  const {
+    admin: {
+      useAsTitle,
+    },
+    fields,
+  } = collection;
+
+  const topLevelFields = flattenFields(fields);
+  return topLevelFields.find((field) => fieldAffectsData(field) && field.name === useAsTitle);
+};
+
+/**
+ * The ListControls component is used to render the controls (search, filter, where)
+ * for a collection's list view. You can find those directly above the table which lists
+ * the collection's documents.
+ */
 const ListControls: React.FC<Props> = (props) => {
   const {
     collection,
@@ -37,7 +55,6 @@ const ListControls: React.FC<Props> = (props) => {
     collection: {
       fields,
       admin: {
-        useAsTitle,
         listSearchableFields,
       },
     },
@@ -46,10 +63,11 @@ const ListControls: React.FC<Props> = (props) => {
   const params = useSearchParams();
   const shouldInitializeWhereOpened = validateWhereQuery(params?.where);
 
-  const [titleField] = useState(() => {
-    const topLevelFields = flattenFields(fields);
-    return topLevelFields.find((field) => fieldAffectsData(field) && field.name === useAsTitle);
-  });
+  const [titleField, setTitleField] = useState(getUseAsTitle(collection));
+  useEffect(() => {
+    setTitleField(getUseAsTitle(collection));
+  }, [collection]);
+
   const [textFieldsToBeSearched] = useState(getTextFieldsToBeSearched(listSearchableFields, fields));
   const [visibleDrawer, setVisibleDrawer] = useState<'where' | 'sort' | 'columns'>(shouldInitializeWhereOpened ? 'where' : undefined);
   const { t, i18n } = useTranslation('general');
@@ -92,6 +110,8 @@ const ListControls: React.FC<Props> = (props) => {
                 pillStyle="light"
                 className={`${baseClass}__toggle-columns ${visibleDrawer === 'columns' ? `${baseClass}__buttons-active` : ''}`}
                 onClick={() => setVisibleDrawer(visibleDrawer !== 'columns' ? 'columns' : undefined)}
+                aria-expanded={visibleDrawer === 'columns'}
+                aria-controls={`${baseClass}-columns`}
                 icon={<Chevron />}
               >
                 {t('columns')}
@@ -101,6 +121,8 @@ const ListControls: React.FC<Props> = (props) => {
               pillStyle="light"
               className={`${baseClass}__toggle-where ${visibleDrawer === 'where' ? `${baseClass}__buttons-active` : ''}`}
               onClick={() => setVisibleDrawer(visibleDrawer !== 'where' ? 'where' : undefined)}
+              aria-expanded={visibleDrawer === 'where'}
+              aria-controls={`${baseClass}-where`}
               icon={<Chevron />}
             >
               {t('filters')}
@@ -110,6 +132,8 @@ const ListControls: React.FC<Props> = (props) => {
                 className={`${baseClass}__toggle-sort`}
                 buttonStyle={visibleDrawer === 'sort' ? undefined : 'secondary'}
                 onClick={() => setVisibleDrawer(visibleDrawer !== 'sort' ? 'sort' : undefined)}
+                aria-expanded={visibleDrawer === 'sort'}
+                aria-controls={`${baseClass}-sort`}
                 icon="chevron"
                 iconStyle="none"
               >
@@ -123,6 +147,7 @@ const ListControls: React.FC<Props> = (props) => {
         <AnimateHeight
           className={`${baseClass}__columns`}
           height={visibleDrawer === 'columns' ? 'auto' : 0}
+          id={`${baseClass}-columns`}
         >
           <ColumnSelector collection={collection} />
         </AnimateHeight>
@@ -130,6 +155,7 @@ const ListControls: React.FC<Props> = (props) => {
       <AnimateHeight
         className={`${baseClass}__where`}
         height={visibleDrawer === 'where' ? 'auto' : 0}
+        id={`${baseClass}-where`}
       >
         <WhereBuilder
           collection={collection}
@@ -141,6 +167,7 @@ const ListControls: React.FC<Props> = (props) => {
         <AnimateHeight
           className={`${baseClass}__sort`}
           height={visibleDrawer === 'sort' ? 'auto' : 0}
+          id={`${baseClass}-sort`}
         >
           <SortComplex
             modifySearchQuery={modifySearchQuery}

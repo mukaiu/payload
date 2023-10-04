@@ -13,7 +13,6 @@ import Button from '../../elements/Button';
 import Meta from '../../utilities/Meta';
 import HiddenInput from '../../forms/field-types/HiddenInput';
 
-
 import './index.scss';
 
 const baseClass = 'reset-password';
@@ -23,12 +22,12 @@ const ResetPassword: React.FC = () => {
   const { admin: { user: userSlug, logoutRoute }, serverURL, routes: { admin, api } } = config;
   const { token } = useParams<{ token?: string }>();
   const history = useHistory();
-  const { user, setToken } = useAuth();
+  const { user, fetchFullUser } = useAuth();
   const { t } = useTranslation('authentication');
 
-  const onSuccess = (data) => {
+  const onSuccess = async (data) => {
     if (data.token) {
-      setToken(data.token);
+      await fetchFullUser();
       history.push(`${admin}`);
     } else {
       history.push(`${admin}/login`);

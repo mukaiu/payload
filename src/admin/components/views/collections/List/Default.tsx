@@ -21,6 +21,7 @@ import EditMany from '../../../elements/EditMany';
 import DeleteMany from '../../../elements/DeleteMany';
 import PublishMany from '../../../elements/PublishMany';
 import UnpublishMany from '../../../elements/UnpublishMany';
+import formatFilesize from '../../../../../uploads/formatFilesize';
 
 import './index.scss';
 
@@ -36,6 +37,12 @@ const DefaultList: React.FC<Props> = (props) => {
       },
       admin: {
         description,
+        components: {
+          BeforeList,
+          BeforeListTable,
+          AfterListTable,
+          AfterList,
+        } = {},
       } = {},
     },
     data,
@@ -54,9 +61,26 @@ const DefaultList: React.FC<Props> = (props) => {
 
   const { breakpoints: { s: smallBreak } } = useWindowInfo();
   const { t, i18n } = useTranslation('general');
+  let formattedDocs = data.docs || [];
+
+  if (collection.upload) {
+    formattedDocs = formattedDocs?.map((doc) => {
+      return {
+        ...doc,
+        filesize: formatFilesize(doc.filesize),
+      };
+    });
+  }
 
   return (
     <div className={baseClass}>
+      {Array.isArray(BeforeList) && BeforeList.map((Component, i) => (
+        <Component
+          key={i}
+          {...props}
+        />
+      ))}
+
       <Meta
         title={getTranslation(collection.labels.plural, i18n)}
       />
@@ -76,7 +100,10 @@ const DefaultList: React.FC<Props> = (props) => {
                   {getTranslation(pluralLabel, i18n)}
                 </h1>
                 {hasCreatePermission && (
-                  <Pill to={newDocumentURL}>
+                  <Pill
+                    to={newDocumentURL}
+                    aria-label={t('createNewLabel', { label: getTranslation(singularLabel, i18n) })}
+                  >
                     {t('createNew')}
                   </Pill>
                 )}
@@ -100,6 +127,12 @@ const DefaultList: React.FC<Props> = (props) => {
             handleWhereChange={handleWhereChange}
             resetParams={resetParams}
           />
+          {Array.isArray(BeforeListTable) && BeforeListTable.map((Component, i) => (
+            <Component
+              key={i}
+              {...props}
+            />
+          ))}
           {!data.docs && (
             <StaggeredShimmers
               className={[`${baseClass}__shimmer`, `${baseClass}__shimmer--rows`].join(' ')}
@@ -108,7 +141,7 @@ const DefaultList: React.FC<Props> = (props) => {
           )}
           {(data.docs && data.docs.length > 0) && (
             <RelationshipProvider>
-              <Table data={data.docs} />
+              <Table data={formattedDocs} />
             </RelationshipProvider>
           )}
           {data.docs && data.docs.length === 0 && (
@@ -126,6 +159,13 @@ const DefaultList: React.FC<Props> = (props) => {
               )}
             </div>
           )}
+          {Array.isArray(AfterListTable) && AfterListTable.map((Component, i) => (
+            <Component
+              key={i}
+              {...props}
+            />
+          ))}
+
           <div className={`${baseClass}__page-controls`}>
             <Paginator
               limit={data.limit}
@@ -189,6 +229,12 @@ const DefaultList: React.FC<Props> = (props) => {
           </div>
         </Gutter>
       </SelectionProvider>
+      {Array.isArray(AfterList) && AfterList.map((Component, i) => (
+        <Component
+          key={i}
+          {...props}
+        />
+      ))}
     </div>
   );
 };

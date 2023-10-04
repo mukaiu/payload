@@ -94,12 +94,13 @@ async function update<TSlug extends keyof GeneratedTypes['globals']>(
   }
 
   const originalDoc = await afterRead({
-    depth,
+    depth: 0,
     doc: globalJSON,
     entityConfig: globalConfig,
     req,
     overrideAccess: true,
     showHiddenFields,
+    context: req.context,
   });
 
   // /////////////////////////////////////
@@ -113,6 +114,7 @@ async function update<TSlug extends keyof GeneratedTypes['globals']>(
     operation: 'update',
     overrideAccess,
     req,
+    context: req.context,
   });
 
   // /////////////////////////////////////
@@ -155,22 +157,31 @@ async function update<TSlug extends keyof GeneratedTypes['globals']>(
     operation: 'update',
     req,
     skipValidation: shouldSaveDraft,
+    context: req.context,
   });
 
   // /////////////////////////////////////
   // Update
   // /////////////////////////////////////
 
+  const now = new Date().toISOString();
+
   if (!shouldSaveDraft) {
     if (globalExists) {
       result = await Model.findOneAndUpdate(
         { globalType: slug },
-        result,
+        {
+          ...result,
+          updatedAt: now,
+        },
         { new: true },
       );
     } else {
       result.globalType = slug;
-      result = await Model.create(result);
+      result = await Model.create({
+        ...result,
+        createdAt: now,
+      });
     }
   }
 
@@ -189,7 +200,7 @@ async function update<TSlug extends keyof GeneratedTypes['globals']>(
       docWithLocales: {
         ...result,
         createdAt: result.createdAt,
-        updatedAt: result.updatedAt,
+        updatedAt: now,
       },
       autosave,
       draft: shouldSaveDraft,
@@ -207,6 +218,7 @@ async function update<TSlug extends keyof GeneratedTypes['globals']>(
     req,
     overrideAccess,
     showHiddenFields,
+    context: req.context,
   });
 
   // /////////////////////////////////////
@@ -232,6 +244,7 @@ async function update<TSlug extends keyof GeneratedTypes['globals']>(
     previousDoc: originalDoc,
     entityConfig: globalConfig,
     operation: 'update',
+    context: req.context,
     req,
   });
 

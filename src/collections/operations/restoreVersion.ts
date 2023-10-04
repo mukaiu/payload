@@ -124,12 +124,28 @@ async function restoreVersion<T extends TypeWithID = any>(args: Arguments): Prom
 
   delete prevVersion.id;
 
+  await VersionModel.updateMany({
+    $and: [
+      {
+        parent: {
+          $eq: parentDocID,
+        },
+      },
+      {
+        latest: {
+          $eq: true,
+        },
+      },
+    ],
+  }, { $unset: { latest: 1 } });
+
   await VersionModel.create({
     parent: parentDocID,
     version: rawVersion.version,
     autosave: false,
     createdAt: prevVersion.createdAt,
     updatedAt: new Date().toISOString(),
+    latest: payload.config.database.queryDrafts_2_0 ? true : undefined,
   });
 
   // /////////////////////////////////////
@@ -143,6 +159,7 @@ async function restoreVersion<T extends TypeWithID = any>(args: Arguments): Prom
     req,
     overrideAccess,
     showHiddenFields,
+    context: req.context,
   });
 
   // /////////////////////////////////////
@@ -155,6 +172,7 @@ async function restoreVersion<T extends TypeWithID = any>(args: Arguments): Prom
     result = await hook({
       req,
       doc: result,
+      context: req.context,
     }) || result;
   }, Promise.resolve());
 
@@ -168,6 +186,7 @@ async function restoreVersion<T extends TypeWithID = any>(args: Arguments): Prom
     previousDoc: prevDocWithLocales,
     entityConfig: collectionConfig,
     operation: 'update',
+    context: req.context,
     req,
   });
 
@@ -183,6 +202,7 @@ async function restoreVersion<T extends TypeWithID = any>(args: Arguments): Prom
       req,
       previousDoc: prevDocWithLocales,
       operation: 'update',
+      context: req.context,
     }) || result;
   }, Promise.resolve());
 

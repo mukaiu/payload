@@ -6,6 +6,7 @@ import Tooltip from '../../../../../elements/Tooltip';
 import Edit from '../../../../../icons/Edit';
 import { useAuth } from '../../../../../utilities/Auth';
 import { Option } from '../../types';
+
 import './index.scss';
 
 const baseClass = 'relationship--multi-value-label';
@@ -17,10 +18,12 @@ export const MultiValueLabel: React.FC<MultiValueProps<Option>> = (props) => {
       relationTo,
       label,
     },
-    customProps: {
-      setDrawerIsOpen,
-      draggableProps,
-      onSave,
+    selectProps: {
+      customProps: {
+        setDrawerIsOpen,
+        draggableProps,
+        // onSave,
+      } = {},
     } = {},
   } = props;
 
@@ -54,6 +57,8 @@ export const MultiValueLabel: React.FC<MultiValueProps<Option>> = (props) => {
           <DocumentDrawerToggler
             className={`${baseClass}__drawer-toggler`}
             aria-label={`Edit ${label}`}
+            onTouchEnd={(e) => e.stopPropagation()} // prevents react-select dropdown from opening
+            onMouseDown={(e) => e.stopPropagation()} // prevents react-select dropdown from opening
             onMouseEnter={() => setShowTooltip(true)}
             onMouseLeave={() => setShowTooltip(false)}
             onClick={() => setShowTooltip(false)}
@@ -66,7 +71,7 @@ export const MultiValueLabel: React.FC<MultiValueProps<Option>> = (props) => {
             </Tooltip>
             <Edit />
           </DocumentDrawerToggler>
-          <DocumentDrawer onSave={onSave} />
+          <DocumentDrawer onSave={/* onSave */null} />
         </Fragment>
       )}
     </div>

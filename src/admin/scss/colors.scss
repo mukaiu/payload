@@ -81,6 +81,8 @@
   --color-error-900: rgb(51, 22, 24);
   --color-error-950: rgb(25, 11, 12);
 
+  --theme-border-color: var(--theme-elevation-150);
+
   --theme-success-50: var(--color-success-50);
   --theme-success-100: var(--color-success-100);
   --theme-success-150: var(--color-success-150);
@@ -165,6 +167,8 @@
 }
 
 html[data-theme=dark] {
+  --theme-border-color: var(--theme-elevation-150);
+
   --theme-elevation-0: var(--color-base-900);
   --theme-elevation-50: var(--color-base-850);
   --theme-elevation-100: var(--color-base-800);
@@ -173,8 +177,9 @@ html[data-theme=dark] {
   --theme-elevation-250: var(--color-base-650);
   --theme-elevation-300: var(--color-base-600);
   --theme-elevation-350: var(--color-base-550);
-  --theme-elevation-400: var(--color-base-450);
-  --theme-elevation-450: var(--color-base-400);
+  --theme-elevation-400: var(--color-base-500);
+  --theme-elevation-450: var(--color-base-450);
+  --theme-elevation-500: var(--color-base-400);
   --theme-elevation-550: var(--color-base-350);
   --theme-elevation-600: var(--color-base-300);
   --theme-elevation-650: var(--color-base-250);

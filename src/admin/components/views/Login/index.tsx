@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useHistory } from 'react-router-dom';
+import { Link, useHistory, useLocation } from 'react-router-dom';
 import { Trans, useTranslation } from 'react-i18next';
 import { useConfig } from '../../utilities/Config';
 import { useAuth } from '../../utilities/Auth';
@@ -20,12 +20,13 @@ const baseClass = 'login';
 const Login: React.FC = () => {
   const history = useHistory();
   const { t } = useTranslation('authentication');
-  const { user, setToken } = useAuth();
+  const { user, fetchFullUser } = useAuth();
   const config = useConfig();
   const {
     admin: {
       user: userSlug,
       logoutRoute,
+      autoLogin,
       components: {
         beforeLogin,
         afterLogin,
@@ -41,10 +42,17 @@ const Login: React.FC = () => {
 
   const collection = collections.find(({ slug }) => slug === userSlug);
 
-  const onSuccess = (data) => {
+  // Fetch 'redirect' from the query string which denotes the URL the user originally tried to visit. This is set in the Routes.tsx file when a user tries to access a protected route and is redirected to the login screen.
+  const query = new URLSearchParams(useLocation().search);
+  const redirect = query.get('redirect');
+
+
+  const onSuccess = async (data) => {
     if (data.token) {
-      setToken(data.token);
-      history.push(admin);
+      await fetchFullUser();
+
+      // Ensure the redirect always starts with the admin route, and concatenate the redirect path
+      history.push(admin + (redirect || ''));
     }
   };
 
@@ -97,6 +105,10 @@ const Login: React.FC = () => {
               onSuccess={onSuccess}
               method="post"
               action={`${serverURL}${api}/${userSlug}/login`}
+              initialData={{
+                email: autoLogin && autoLogin.prefillOnly ? autoLogin.email : undefined,
+                password: autoLogin && autoLogin.prefillOnly ? autoLogin.password : undefined,
+              }}
             >
               <FormLoadingOverlayToggle
                 action="loading"

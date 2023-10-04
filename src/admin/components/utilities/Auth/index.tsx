@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import jwtDecode from 'jwt-decode';
 import { useHistory, useLocation } from 'react-router-dom';
 import { useModal } from '@faceless-ui/modal';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'react-toastify';
 import { Permissions, User } from '../../../../auth/types';
 import { useConfig } from '../Config';
 import { requests } from '../../../api';
@@ -16,6 +16,7 @@ const maxTimeoutTime = 2147483647;
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>();
   const [tokenInMemory, setTokenInMemory] = useState<string>();
+  const [tokenExpiration, setTokenExpiration] = useState<number>();
   const { pathname } = useLocation();
   const { push } = useHistory();
 
@@ -25,6 +26,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     admin: {
       user: userSlug,
       inactivityRoute: logoutInactivityRoute,
+      autoLogin,
     },
     serverURL,
     routes: {
@@ -33,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
   } = config;
 
-  const exp = user?.exp;
+  const exp = tokenExpiration;
 
   const [permissions, setPermissions] = useState<Permissions>();
 
@@ -44,59 +46,112 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const id = user?.id;
 
-  const refreshCookie = useCallback(() => {
+  const redirectToInactivityRoute = useCallback(() => {
+    if (window.location.pathname.startsWith(admin)) {
+      const redirectParam = `?redirect=${encodeURIComponent(window.location.pathname.replace(admin, ''))}`;
+      push(`${admin}${logoutInactivityRoute}${redirectParam}`);
+    } else {
+      push(`${admin}${logoutInactivityRoute}`);
+    }
+    closeAllModals();
+  }, [push, admin, logoutInactivityRoute, closeAllModals]);
+
+  const revokeTokenAndExpire = useCallback(() => {
+    setTokenInMemory(undefined);
+    setTokenExpiration(undefined);
+  }, []);
+
+  const setTokenAndExpiration = useCallback((json) => {
+    const token = json?.token || json?.refreshedToken;
+    if (token && json?.exp) {
+      setTokenInMemory(token);
+      setTokenExpiration(json.exp);
+    } else {
+      revokeTokenAndExpire();
+    }
+  }, [revokeTokenAndExpire]);
+
+  const refreshCookie = useCallback((forceRefresh?: boolean) => {
     const now = Math.round((new Date()).getTime() / 1000);
-    const remainingTime = (exp as number || 0) - now;
+    const remainingTime = (typeof exp === 'number' ? exp : 0) - now;
 
-    if (exp && remainingTime < 120) {
+    if (forceRefresh || (exp && remainingTime < 120)) {
       setTimeout(async () => {
-        const request = await requests.post(`${serverURL}${api}/${userSlug}/refresh-token`, {
-          headers: {
-            'Accept-Language': i18n.language,
-          },
-        });
+        try {
+          const request = await requests.post(`${serverURL}${api}/${userSlug}/refresh-token`, {
+            headers: {
+              'Accept-Language': i18n.language,
+            },
+          });
 
-        if (request.status === 200) {
-          const json = await request.json();
-          setUser(json.user);
-        } else {
-          setUser(null);
-          push(`${admin}${logoutInactivityRoute}`);
+          if (request.status === 200) {
+            const json = await request.json();
+            setUser(json.user);
+            setTokenAndExpiration(json);
+          } else {
+            setUser(null);
+            redirectToInactivityRoute();
+          }
+        } catch (e) {
+          toast.error(e.message);
         }
       }, 1000);
     }
-  }, [exp, serverURL, api, userSlug, push, admin, logoutInactivityRoute, i18n]);
+  }, [serverURL, api, userSlug, i18n, exp, redirectToInactivityRoute, setTokenAndExpiration]);
 
-  const setToken = useCallback((token: string) => {
-    const decoded = jwtDecode<User>(token);
-    setUser(decoded);
-    setTokenInMemory(token);
-  }, []);
+  const refreshCookieAsync = useCallback(async (skipSetUser?: boolean): Promise<User> => {
+    try {
+      const request = await requests.post(`${serverURL}${api}/${userSlug}/refresh-token`, {
+        headers: {
+          'Accept-Language': i18n.language,
+        },
+      });
+
+      if (request.status === 200) {
+        const json = await request.json();
+        if (!skipSetUser) {
+          setUser(json.user);
+          setTokenAndExpiration(json);
+        }
+        return json.user;
+      }
+
+      setUser(null);
+      redirectToInactivityRoute();
+      return null;
+    } catch (e) {
+      toast.error(`Refreshing token failed: ${e.message}`);
+      return null;
+    }
+  }, [serverURL, api, userSlug, i18n, redirectToInactivityRoute, setTokenAndExpiration]);
 
   const logOut = useCallback(() => {
     setUser(null);
-    setTokenInMemory(undefined);
+    revokeTokenAndExpire();
     requests.post(`${serverURL}${api}/${userSlug}/logout`);
-  }, [serverURL, api, userSlug]);
+  }, [serverURL, api, userSlug, revokeTokenAndExpire]);
 
   const refreshPermissions = useCallback(async () => {
-    const request = await requests.get(`${serverURL}${api}/access`, {
-      headers: {
-        'Accept-Language': i18n.language,
-      },
-    });
+    try {
+      const request = await requests.get(`${serverURL}${api}/access`, {
+        headers: {
+          'Accept-Language': i18n.language,
+        },
+      });
 
-    if (request.status === 200) {
-      const json: Permissions = await request.json();
-      setPermissions(json);
-    } else {
-      throw new Error(`Fetching permissions failed with status code ${request.status}`);
+      if (request.status === 200) {
+        const json: Permissions = await request.json();
+        setPermissions(json);
+      } else {
+        throw new Error(`Fetching permissions failed with status code ${request.status}`);
+      }
+    } catch (e) {
+      toast.error(`Refreshing permissions failed: ${e.message}`);
     }
   }, [serverURL, api, i18n]);
 
-  // On mount, get user and set
-  useEffect(() => {
-    const fetchMe = async () => {
+  const fetchFullUser = React.useCallback(async () => {
+    try {
       const request = await requests.get(`${serverURL}${api}/${userSlug}/me`, {
         headers: {
           'Accept-Language': i18n.language,
@@ -106,16 +161,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (request.status === 200) {
         const json = await request.json();
 
-        setUser(json?.user || null);
-
-        if (json?.token) {
-          setToken(json.token);
+        if (json?.user) {
+          setUser(json.user);
+          if (json?.token) {
+            setTokenAndExpiration(json);
+          }
+        } else if (autoLogin && autoLogin.prefillOnly !== true) {
+          // auto log-in with the provided autoLogin credentials. This is used in dev mode
+          // so you don't have to log in over and over again
+          const autoLoginResult = await requests.post(`${serverURL}${api}/${userSlug}/login`, {
+            body: JSON.stringify({
+              email: autoLogin.email,
+              password: autoLogin.password,
+            }),
+            headers: {
+              'Accept-Language': i18n.language,
+              'Content-Type': 'application/json',
+            },
+          });
+          if (autoLoginResult.status === 200) {
+            const autoLoginJson = await autoLoginResult.json();
+            setUser(autoLoginJson.user);
+            if (autoLoginJson?.token) {
+              setTokenAndExpiration(autoLoginJson);
+            }
+          } else {
+            setUser(null);
+            revokeTokenAndExpire();
+          }
+        } else {
+          setUser(null);
+          revokeTokenAndExpire();
         }
       }
-    };
+    } catch (e) {
+      toast.error(`Fetching user failed: ${e.message}`);
+    }
+  }, [serverURL, api, userSlug, i18n, autoLogin, setTokenAndExpiration, revokeTokenAndExpire]);
 
-    fetchMe();
-  }, [i18n, setToken, api, serverURL, userSlug]);
+  // On mount, get user and set
+  useEffect(() => {
+    fetchFullUser();
+  }, [fetchFullUser]);
 
   // When location changes, refresh cookie
   useEffect(() => {
@@ -138,12 +225,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let reminder: ReturnType<typeof setTimeout>;
     const now = Math.round((new Date()).getTime() / 1000);
-    const remainingTime = exp as number - now;
+    const remainingTime = typeof exp === 'number' ? exp - now : 0;
 
     if (remainingTime > 0) {
       reminder = setTimeout(() => {
         openModal('stay-logged-in');
-      }, (Math.min((remainingTime - 60) * 1000), maxTimeoutTime));
+      }, Math.max(Math.min((remainingTime - 60) * 1000, maxTimeoutTime)));
     }
 
     return () => {
@@ -154,30 +241,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let forceLogOut: ReturnType<typeof setTimeout>;
     const now = Math.round((new Date()).getTime() / 1000);
-    const remainingTime = exp as number - now;
+    const remainingTime = typeof exp === 'number' ? exp - now : 0;
 
     if (remainingTime > 0) {
       forceLogOut = setTimeout(() => {
         setUser(null);
-        push(`${admin}${logoutInactivityRoute}`);
-        closeAllModals();
-      }, Math.min(remainingTime * 1000, maxTimeoutTime));
+        revokeTokenAndExpire();
+        redirectToInactivityRoute();
+      }, Math.max(Math.min(remainingTime * 1000, maxTimeoutTime), 0));
     }
 
     return () => {
       if (forceLogOut) clearTimeout(forceLogOut);
     };
-  }, [exp, push, closeAllModals, admin, i18n, logoutInactivityRoute]);
+  }, [exp, closeAllModals, i18n, redirectToInactivityRoute, revokeTokenAndExpire]);
 
   return (
     <Context.Provider value={{
       user,
+      setUser,
       logOut,
       refreshCookie,
+      refreshCookieAsync,
       refreshPermissions,
       permissions,
-      setToken,
       token: tokenInMemory,
+      fetchFullUser,
     }}
     >
       {children}
